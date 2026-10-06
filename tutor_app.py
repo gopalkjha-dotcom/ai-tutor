@@ -138,7 +138,7 @@ elif subject == ACCA:
 
 reference = ""
 if mode == "Review my answer":
-    reference = st.text_area("Question and marking guidance", max_chars=16000,
+    reference = st.text_area("Question and marking guidance", max_chars=16000, key=f"reference-{context!r}",
         help="Paste the question, paper/session reference and the relevant marking scheme or your own rubric. Then put your answer in the chat box. This reference is sent to OpenAI for this review.")
     st.caption("Marks are an indicative estimate against the supplied guidance, not an official examiner result. Without a marking scheme, feedback will be qualitative.")
 st.caption("Describe a topic or paste a question. Avoid names, contact details or confidential material. Questions are sent to OpenAI. AI answers can be wrong; check important answers against your course material.")
