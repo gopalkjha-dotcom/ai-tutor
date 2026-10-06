@@ -1,6 +1,16 @@
 # GJ AI Tutor — starter pilot
 
-A Streamlit app powered by OpenAI, with Maths, Physics, Chemistry, Accounting and Finance; GCSE/A Level/university/professional levels; hints, step-by-step teaching and interactive quizzes. Lesson transcripts can be downloaded. Changing lesson settings clears the current conversation.
+A Streamlit app powered by OpenAI, with Maths, Physics, Chemistry, Accounting, Finance, ACCA qualification papers and a dedicated ACCA DipIFR study option; GCSE/A Level/university/professional levels; hints, step-by-step teaching, interactive quizzes and answer review. Lesson transcripts can be downloaded. Changing lesson settings clears the current conversation.
+
+## ACCA DipIFR
+
+Select `Diploma in IFRS (ACCA DipIFR)` in Subject. Its five study areas use a concise topic map checked against ACCA's December 2026–June 2027 syllabus and study guide, linked inside the app. The outline guides the prompt; it does not load the complete syllabus, IFRS standards or official marking schemes. Practice questions and feedback are AI-generated, independent study support and not ACCA-approved.
+
+Select `ACCA qualification papers` for BT, MA, FA, LW, PM, TX, FR, AA, FM, SBL, SBR, AFM, APM, ATX or AAA. These 15 offered paper options include all four strategic options; candidates normally choose two. Provide the exam sitting and relevant regional variant. Official resource links are included, but this release does not certify full syllabus coverage or automatically read the linked documents. Ethics/experience requirements and the future qualification redesign are not courses in this release.
+
+## Answer review
+
+Choose `Review my answer`. Paste the question and relevant marking guidance, then submit your answer in chat. The reference is sent to OpenAI and used as study data, not instructions. Numerical feedback must be supported by the supplied rubric and is labelled indicative. Without a marking scheme, the tutor gives qualitative feedback. Do not paste personal or confidential information. Official past papers and schemes are linked rather than republished in the public repository.
 
 ## First step: GitHub
 
@@ -11,7 +21,7 @@ A Streamlit app powered by OpenAI, with Maths, Physics, Chemistry, Accounting an
 
 ## OpenAI account
 
-Create an account at https://platform.openai.com, configure billing and a low provider-side spending limit, then create an API key. Keep the key private. A OpenAI chat subscription does not supply API credits. API costs depend on tokens, model and conversation length.
+Create an account at https://platform.openai.com, configure billing and a low provider-side spending limit, then create an API key. Keep the key private. An OpenAI chat subscription does not supply API credits. API costs depend on tokens, model and conversation length.
 
 ## Streamlit deployment
 
