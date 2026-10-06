@@ -3,7 +3,7 @@ import os
 import hmac
 import time
 import streamlit as st
-import anthropic
+import openai
 
 st.set_page_config(page_title="GJ AI Tutor", page_icon="📘", layout="centered")
 
@@ -19,7 +19,7 @@ st.caption("GJ Perspective · Learn with clarity, one step at a time")
 # Fail closed: the initial pilot must have a password before making API calls.
 password = str(setting("APP_PASSWORD"))
 if not password:
-    st.info("Your tutor is ready for setup. Add APP_PASSWORD and ANTHROPIC_API_KEY in the app's Secrets settings to begin.")
+    st.info("Your tutor is ready for setup. Add APP_PASSWORD and OPENAI_API_KEY in the app's Secrets settings to begin.")
     st.stop()
 if not st.session_state.get("authenticated"):
     with st.form("access"):
@@ -32,9 +32,9 @@ if not st.session_state.get("authenticated"):
         st.error("Incorrect password.")
     st.stop()
 
-api_key = setting("ANTHROPIC_API_KEY")
+api_key = setting("OPENAI_API_KEY")
 if not api_key:
-    st.info("Add ANTHROPIC_API_KEY in Secrets to enable teaching.")
+    st.info("Add OPENAI_API_KEY in Secrets to enable teaching.")
     st.stop()
 
 with st.sidebar:
@@ -60,7 +60,7 @@ st.session_state.setdefault("attempts", 0)
 st.session_state.setdefault("last_request", 0.0)
 
 st.subheader(f"{subject} · {mode}")
-st.caption("Describe a topic or paste a question. Avoid names, contact details or confidential material. Questions are sent to Anthropic. AI answers can be wrong; check important answers against your course material.")
+st.caption("Describe a topic or paste a question. Avoid names, contact details or confidential material. Questions are sent to OpenAI. AI answers can be wrong; check important answers against your course material.")
 for item in st.session_state.messages:
     with st.chat_message(item["role"]):
         st.markdown(item["content"])
@@ -93,28 +93,29 @@ if prompt:
         st.markdown(prompt)
     try:
         with st.spinner("Preparing your lesson…"):
-            client = anthropic.Anthropic(api_key=api_key, timeout=45.0, max_retries=0)
-            response = client.messages.create(
-                model=str(setting("ANTHROPIC_MODEL", "claude-haiku-4-5")),
-                max_tokens=1000, system=instructions, messages=candidate,
+            client = openai.OpenAI(api_key=api_key, timeout=45.0, max_retries=0)
+            response = client.responses.create(
+                model=str(setting("OPENAI_MODEL", "gpt-5.4-mini")),
+                max_output_tokens=1800, reasoning={"effort": "low"},
+                instructions=instructions, input=candidate, store=False,
             )
-        answer = "\n\n".join(block.text for block in response.content if block.type == "text")
+        answer = response.output_text
         if not answer:
             st.error("No text answer was returned. Please try again.")
         else:
             st.session_state.messages.extend([{"role": "user", "content": prompt}, {"role": "assistant", "content": answer}])
             with st.chat_message("assistant"):
                 st.markdown(answer)
-            if response.stop_reason == "max_tokens":
+            if response.status == "incomplete":
                 st.caption("Response length limit reached. Ask the tutor to continue.")
-    except anthropic.AuthenticationError:
+    except openai.AuthenticationError:
         st.error("The API key was rejected. Check the key in Secrets.")
-    except anthropic.RateLimitError:
-        st.error("The API usage limit was reached. Check your Anthropic account limits or try later.")
-    except anthropic.APIConnectionError:
-        st.error("Could not reach Claude. Please try again shortly.")
-    except anthropic.APIStatusError:
-        st.error("Claude could not complete the request. Check your account credit and configured model, then try again.")
+    except openai.RateLimitError:
+        st.error("The API usage limit was reached. Check your OpenAI account limits or try later.")
+    except openai.APIConnectionError:
+        st.error("Could not reach OpenAI. Please try again shortly.")
+    except openai.APIStatusError:
+        st.error("OpenAI could not complete the request. Check your account credit and configured model, then try again.")
 
 if st.session_state.messages:
     transcript = "\n\n".join(f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages)
