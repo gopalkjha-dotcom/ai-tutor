@@ -294,6 +294,16 @@ if prompt:
     except openai.APIStatusError:
         st.error("OpenAI could not complete the request. Check your account credit and configured model, then try again.")
 
+@st.cache_data(show_spinner=False, max_entries=20)
+def build_lesson_pdf(messages, subject, mode):
+    from lesson_pdf import lesson_pdf
+    return lesson_pdf([{"role": r, "content": c} for r, c in messages], subject, mode)
+
+
 if st.session_state.messages:
     transcript = "\n\n".join(f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages)
-    st.download_button("Download lesson", transcript, "gj-tutor-lesson.txt", "text/plain")
+    try:
+        pdf_bytes = build_lesson_pdf(tuple((m["role"], m["content"]) for m in st.session_state.messages), subject, mode)
+        st.download_button("Download lesson (PDF)", pdf_bytes, "gj-tutor-lesson.pdf", "application/pdf")
+    except Exception:  # never let the download break the lesson; offer plain text instead
+        st.download_button("Download lesson (text)", transcript, "gj-tutor-lesson.txt", "text/plain")
