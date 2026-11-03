@@ -5,7 +5,10 @@ import hmac
 import re
 import time
 import streamlit as st
-import openai
+import streamlit.components.v1 as components
+from ai_switchboard import ask, configured, AllProvidersFailed
+from speech import (VOICE_IDS, speech_text, language_of, browser_voice_html,
+                    cloned_voice_mp3, cache_key)
 
 st.set_page_config(page_title="GJ AI Tutor", page_icon="📘", layout="centered")
 
@@ -21,7 +24,7 @@ st.caption("GJ Perspective · Learn with clarity, one step at a time")
 # Fail closed: the initial pilot must have a password before making API calls.
 password = str(setting("APP_PASSWORD"))
 if not password:
-    st.info("Your tutor is ready for setup. Add APP_PASSWORD and OPENAI_API_KEY in the app's Secrets settings to begin.")
+    st.info("Your tutor is ready for setup. Add APP_PASSWORD and at least one AI key (OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY) in the app's Secrets settings to begin.")
     st.stop()
 if not st.session_state.get("authenticated"):
     with st.form("access"):
@@ -34,10 +37,13 @@ if not st.session_state.get("authenticated"):
         st.error("Incorrect password.")
     st.stop()
 
-api_key = setting("OPENAI_API_KEY")
-if not api_key:
-    st.info("Add OPENAI_API_KEY in Secrets to enable teaching.")
+if not configured(setting):
+    st.info("Add OPENAI_API_KEY, ANTHROPIC_API_KEY or GEMINI_API_KEY in Secrets to enable teaching.")
     st.stop()
+
+VOICE_KEY = str(setting("RUNPOD_API_KEY"))
+VOICE_ENDPOINT = str(setting("RUNPOD_VOICE_ENDPOINT"))
+MAX_VOICE_CLIPS = 20  # per browser session, keeps GPU cost predictable
 
 DIPIFR = "Diploma in IFRS (ACCA DipIFR)"
 ACCA = "ACCA qualification papers"
@@ -109,6 +115,8 @@ with st.sidebar:
         level = st.selectbox("Level", ["GCSE / IGCSE", "A Level", "University", "Professional exam"])
         board = st.selectbox("Exam board / syllabus", ["General learning", "Cambridge", "Edexcel", "AQA", "ICAI", "ACCA"])
     mode = st.radio("Teaching style", ["Hints first", "Step by step", "Quiz me", "Review my answer"])
+    speaker = st.radio("Listen voice", ["Gopal", "Neetu"], horizontal=True,
+                       help="Used by the Listen button under each answer. English or Hindi is picked automatically.")
     if subject not in {DIPIFR, ACCA}:
         st.caption("Board selection guides teaching. Full syllabus coverage and official marking have not been verified.")
     if st.button("Start a new lesson"):
@@ -125,6 +133,8 @@ if st.session_state.get("context") != context:
 st.session_state.setdefault("messages", [])
 st.session_state.setdefault("attempts", 0)
 st.session_state.setdefault("last_request", 0.0)
+st.session_state.setdefault("audio", {})
+st.session_state.setdefault("voice_clips", 0)
 
 st.subheader(f"{subject} · {mode}")
 if subject == DIPIFR:
@@ -141,12 +151,44 @@ elif subject == ACCA:
 reference = ""
 if mode == "Review my answer":
     reference = st.text_area("Question and marking guidance", max_chars=16000, key=f"reference-{context!r}",
-        help="Paste the question, paper/session reference and the relevant marking scheme or your own rubric. Then put your answer in the chat box. This reference is sent to OpenAI for this review.")
+        help="Paste the question, paper/session reference and the relevant marking scheme or your own rubric. Then put your answer in the chat box. This reference is sent to the AI provider for this review.")
     st.caption("Marks are an indicative estimate against the supplied guidance, not an official examiner result. Without a marking scheme, feedback will be qualitative.")
-st.caption("Describe a topic, paste a question, or attach a photo of your homework. Avoid names, contact details or confidential material. Questions are sent to OpenAI. AI answers can be wrong; check important answers against your course material.")
-for item in st.session_state.messages:
+st.caption("Describe a topic, paste a question, or attach a photo of your homework. Avoid names, contact details or confidential material. Questions are sent to an AI provider (OpenAI, Anthropic or Google). AI answers can be wrong; check important answers against your course material.")
+def listen_controls(answer, idx):
+    """Device-voice Listen button, plus the GJ cloned voice when the voice service is set up."""
+    spoken, lang = speech_text(answer), language_of(answer)
+    left, right = st.columns(2)
+    with left:
+        html = browser_voice_html(spoken, lang)
+        if hasattr(st, "iframe"):
+            st.iframe(html, height=46)
+        else:
+            components.html(html, height=46)
+    if not (VOICE_KEY and VOICE_ENDPOINT):
+        return
+    voice_id = VOICE_IDS[(speaker, lang)]
+    clip = cache_key(spoken, voice_id)
+    with right:
+        if clip in st.session_state.audio:
+            st.audio(st.session_state.audio[clip], format="audio/mp3")
+        elif st.button(f"🎙 Listen in {speaker}'s voice", key=f"voice-{idx}-{clip}"):
+            if st.session_state.voice_clips >= MAX_VOICE_CLIPS:
+                st.caption("Voice limit for this session reached. Use the device voice.")
+                return
+            with st.spinner(f"Preparing {speaker}'s voice… the first clip can take a minute or two."):
+                try:
+                    st.session_state.audio[clip] = cloned_voice_mp3(spoken, voice_id, VOICE_KEY, VOICE_ENDPOINT)
+                    st.session_state.voice_clips += 1
+                    st.audio(st.session_state.audio[clip], format="audio/mp3", autoplay=True)
+                except Exception:
+                    st.caption("The GJ voice is not available right now. Please use the device voice.")
+
+
+for n, item in enumerate(st.session_state.messages):
     with st.chat_message(item["role"]):
         st.markdown(item["content"])
+        if item["role"] == "assistant":
+            listen_controls(item["content"], n)
 
 instructions = f"""You are a patient, precise tutor for {subject}, at {level} level.
 The learner selected {board}. Do not claim verified syllabus alignment or invent exam-board rules.
@@ -270,29 +312,16 @@ if prompt:
     history_prompt = prompt + ("\n\n📷 *(photo attached)*" if photo is not None else "")
     try:
         with st.spinner("Preparing your lesson…"):
-            client = openai.OpenAI(api_key=api_key, timeout=45.0, max_retries=0)
-            response = client.responses.create(
-                model=str(setting("OPENAI_MODEL", "gpt-5.4-mini")),
-                max_output_tokens=1800, reasoning={"effort": "low"},
-                instructions=instructions, input=candidate, store=False,
-            )
-        answer = tidy_maths(response.output_text or "")
-        if not answer:
-            st.error("No text answer was returned. Please try again.")
-        else:
-            st.session_state.messages.extend([{"role": "user", "content": history_prompt}, {"role": "assistant", "content": answer}])
-            with st.chat_message("assistant"):
-                st.markdown(answer)
-            if response.status == "incomplete":
-                st.caption("Response length limit reached. Ask the tutor to continue.")
-    except openai.AuthenticationError:
-        st.error("The API key was rejected. Check the key in Secrets.")
-    except openai.RateLimitError:
-        st.error("The API usage limit was reached. Check your OpenAI account limits or try later.")
-    except openai.APIConnectionError:
-        st.error("Could not reach OpenAI. Please try again shortly.")
-    except openai.APIStatusError:
-        st.error("OpenAI could not complete the request. Check your account credit and configured model, then try again.")
+            raw, provider, incomplete = ask(setting, instructions, candidate)
+        answer = tidy_maths(raw)
+        st.session_state.messages.extend([{"role": "user", "content": history_prompt}, {"role": "assistant", "content": answer}])
+        with st.chat_message("assistant"):
+            st.markdown(answer)
+            listen_controls(answer, len(st.session_state.messages) - 1)
+        if incomplete:
+            st.caption("Response length limit reached. Ask the tutor to continue.")
+    except AllProvidersFailed:
+        st.error("The tutor could not reach any AI service just now. Please try again in a minute.")
 
 @st.cache_data(show_spinner=False, max_entries=20)
 def build_lesson_pdf(messages, subject, mode):

@@ -1,5 +1,8 @@
 streamlit>=1.45,<2
 openai>=2,<3
+anthropic>=0.60
+google-genai>=1.20
+requests
 fpdf2>=2.7,<3
 matplotlib>=3.7,<4
 pillow
